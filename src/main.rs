@@ -94,9 +94,12 @@ struct SensorProfile {
     sorted: Vec<f64>,
     mean: f64,
     std: f64,
-    p20: f64,
-    p10: f64,
     p2: f64,
+    p10: f64,
+    p20: f64,
+    p80: f64,
+    p90: f64,
+    p98: f64,
 }
 
 impl SensorProfile {
@@ -106,20 +109,28 @@ impl SensorProfile {
         let var = samples.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
         let mut sorted = samples.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let p20 = sorted[n * 20 / 100];
-        let p10 = sorted[n * 10 / 100];
         let p2 = sorted[n * 2 / 100];
-        SensorProfile { sorted, mean, std: var.sqrt().max(1.0), p20, p10, p2 }
+        let p10 = sorted[n * 10 / 100];
+        let p20 = sorted[n * 20 / 100];
+        let p80 = sorted[n * 80 / 100];
+        let p90 = sorted[n * 90 / 100];
+        let p98 = sorted[n * 98 / 100];
+        SensorProfile { sorted, mean, std: var.sqrt().max(1.0), p2, p10, p20, p80, p90, p98 }
     }
 
-    /// Anomaly signal: how far below p20 is this reading?
-    /// Returns 0.0 if at or above p20, up to 1.0 if at p2 or below.
+    /// Anomaly signal: how far outside the [p20, p80] band is this reading?
+    /// Returns 0.0 if within normal range, up to 1.0 at extreme tails.
+    /// Detects BOTH drops (below p20) and spikes (above p80).
     fn anomaly(&self, value: f64) -> f64 {
-        if value >= self.p20 {
-            return 0.0;
+        if value < self.p20 {
+            let range = (self.p20 - self.p2).max(1.0);
+            ((self.p20 - value) / range).clamp(0.0, 1.0)
+        } else if value > self.p80 {
+            let range = (self.p98 - self.p80).max(1.0);
+            ((value - self.p80) / range).clamp(0.0, 1.0)
+        } else {
+            0.0
         }
-        let range = (self.p20 - self.p2).max(1.0);
-        ((self.p20 - value) / range).clamp(0.0, 1.0)
     }
 }
 
@@ -317,7 +328,7 @@ impl Receptor {
 
         let current = &history[n - 1];
 
-        // Per-sensor anomaly (gated at p20)
+        // Per-sensor anomaly (bidirectional: below p20 OR above p80)
         let anom_a = profile.sensors[self.sensor_a].anomaly(current[self.sensor_a]);
         let anom_b = profile.sensors[self.sensor_b].anomaly(current[self.sensor_b]);
 
@@ -346,7 +357,7 @@ impl Receptor {
             } else {
                 long_slice.iter().map(|h| h[sa]).sum::<f64>() / long_slice.len() as f64
             };
-            let delta = (long_mean - short_mean) / profile.sensors[sa].std;
+            let delta = (long_mean - short_mean).abs() / profile.sensors[sa].std;
             delta.clamp(0.0, 1.0)
         } else {
             0.0
@@ -489,16 +500,25 @@ impl Cell {
         eprintln!("  collected {} samples", samples.len());
         let profile = CalibrationProfile::from_samples(samples);
         eprintln!(
-            "  sensor 0 (mem):   mean={:.0} std={:.0} p20={:.0}",
-            profile.sensors[0].mean, profile.sensors[0].std, profile.sensors[0].p20
+            "  sensor 0 (mem):   mean={:.0} std={:.0} p20={:.0} p80={:.0}",
+            profile.sensors[0].mean,
+            profile.sensors[0].std,
+            profile.sensors[0].p20,
+            profile.sensors[0].p80
         );
         eprintln!(
-            "  sensor 1 (clock): mean={:.0} std={:.0} p20={:.0}",
-            profile.sensors[1].mean, profile.sensors[1].std, profile.sensors[1].p20
+            "  sensor 1 (clock): mean={:.0} std={:.0} p20={:.0} p80={:.0}",
+            profile.sensors[1].mean,
+            profile.sensors[1].std,
+            profile.sensors[1].p20,
+            profile.sensors[1].p80
         );
         eprintln!(
-            "  sensor 2 (alloc): mean={:.0} std={:.0} p20={:.0}",
-            profile.sensors[2].mean, profile.sensors[2].std, profile.sensors[2].p20
+            "  sensor 2 (alloc): mean={:.0} std={:.0} p20={:.0} p80={:.0}",
+            profile.sensors[2].mean,
+            profile.sensors[2].std,
+            profile.sensors[2].p20,
+            profile.sensors[2].p80
         );
 
         let seed = Instant::now().elapsed().as_nanos() as u64 ^ 0xDEAD_BEEF;
