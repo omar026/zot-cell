@@ -35,11 +35,19 @@ pub struct Voxel {
 
 impl Voxel {
     pub fn threat_ratio(&self) -> f64 {
-        if self.visits == 0 { 0.0 } else { self.threat_visits as f64 / self.visits as f64 }
+        if self.visits == 0 {
+            0.0
+        } else {
+            self.threat_visits as f64 / self.visits as f64
+        }
     }
 
     pub fn accuracy(&self) -> f64 {
-        if self.total_decided == 0 { 0.5 } else { self.correct as f64 / self.total_decided as f64 }
+        if self.total_decided == 0 {
+            0.5
+        } else {
+            self.correct as f64 / self.total_decided as f64
+        }
     }
 }
 
@@ -69,15 +77,11 @@ impl Cube {
             let ext_lo = lo - range * 1.0;
             let ext_hi = hi + range * 0.5;
             let step = (ext_hi - ext_lo) / BINS as f64;
-            for b in 0..=BINS {
-                edges[axis][b] = ext_lo + step * b as f64;
+            for (b, edge) in edges[axis].iter_mut().enumerate() {
+                *edge = ext_lo + step * b as f64;
             }
         }
-        Cube {
-            voxels: Default::default(),
-            edges,
-            scramble_level: 0,
-        }
+        Cube { voxels: Default::default(), edges, scramble_level: 0 }
     }
 
     /// Map a raw sensor value to a bin index (0..BINS-1), clamped.
@@ -93,11 +97,7 @@ impl Cube {
 
     /// Convert a sensor reading to cube coordinates.
     pub fn coords(&self, reading: &[f64; 3]) -> [usize; 3] {
-        [
-            self.bin(0, reading[0]),
-            self.bin(1, reading[1]),
-            self.bin(2, reading[2]),
-        ]
+        [self.bin(0, reading[0]), self.bin(1, reading[1]), self.bin(2, reading[2])]
     }
 
     /// Record an observation: the organism saw this reading, decided block/allow,
@@ -284,14 +284,16 @@ impl Cube {
                     let nc = (c as i32 + dc).clamp(0, BINS as i32 - 1) as usize;
                     let na = (a as i32 + da).clamp(0, BINS as i32 - 1) as usize;
                     let nv = &self.voxels[nm][nc][na];
-                    if nv.visits < 2 { continue; }
+                    if nv.visits < 2 {
+                        continue;
+                    }
 
                     // Manhattan distance determines weight: face=1, edge=0.5, corner=0.25
                     let dist = dm.unsigned_abs() + dc.unsigned_abs() + da.unsigned_abs();
                     let w = match dist {
-                        0 => 2.0, // self — strongest
-                        1 => 1.0, // face-adjacent
-                        2 => 0.5, // edge-adjacent
+                        0 => 2.0,  // self — strongest
+                        1 => 1.0,  // face-adjacent
+                        2 => 0.5,  // edge-adjacent
                         3 => 0.25, // corner-adjacent
                         _ => 0.0,
                     };
@@ -333,7 +335,9 @@ impl Cube {
         for dm in -1i32..=1 {
             for dc in -1i32..=1 {
                 for da in -1i32..=1 {
-                    if dm == 0 && dc == 0 && da == 0 { continue; }
+                    if dm == 0 && dc == 0 && da == 0 {
+                        continue;
+                    }
                     let nm = (m as i32 + dm).clamp(0, BINS as i32 - 1) as usize;
                     let nc = (c as i32 + dc).clamp(0, BINS as i32 - 1) as usize;
                     let na = (a as i32 + da).clamp(0, BINS as i32 - 1) as usize;
@@ -345,7 +349,11 @@ impl Cube {
                 }
             }
         }
-        if count == 0 { 0.0 } else { sum / count as f64 }
+        if count == 0 {
+            0.0
+        } else {
+            sum / count as f64
+        }
     }
 
     /// Count how many of the 6 faces are "scrambled" (have recent threat activity).
@@ -354,9 +362,12 @@ impl Cube {
         let mut disturbed = 0u32;
         // 6 faces: axis 0 low/high, axis 1 low/high, axis 2 low/high
         let face_slices: [(usize, usize); 6] = [
-            (0, 0), (0, BINS - 1),       // mem low, mem high
-            (1, 0), (1, BINS - 1),       // clock low, clock high
-            (2, 0), (2, BINS - 1),       // alloc low, alloc high
+            (0, 0),
+            (0, BINS - 1), // mem low, mem high
+            (1, 0),
+            (1, BINS - 1), // clock low, clock high
+            (2, 0),
+            (2, BINS - 1), // alloc low, alloc high
         ];
         for &(axis, fixed) in &face_slices {
             let mut face_threats = 0u32;
@@ -397,9 +408,13 @@ impl Cube {
                         total_visits += v.visits as u64;
                         occupied += 1;
                         let tr = v.threat_ratio();
-                        if tr > 0.7 { threat_voxels += 1; }
-                        else if tr < 0.3 { self_voxels += 1; }
-                        else { contested += 1; }
+                        if tr > 0.7 {
+                            threat_voxels += 1;
+                        } else if tr < 0.3 {
+                            self_voxels += 1;
+                        } else {
+                            contested += 1;
+                        }
                         if v.total_decided > 0 {
                             total_accuracy += v.accuracy();
                             accuracy_count += 1;
@@ -416,7 +431,11 @@ impl Cube {
             self_voxels,
             contested,
             total_visits,
-            mean_accuracy: if accuracy_count > 0 { total_accuracy / accuracy_count as f64 } else { 0.0 },
+            mean_accuracy: if accuracy_count > 0 {
+                total_accuracy / accuracy_count as f64
+            } else {
+                0.0
+            },
             scramble_level: self.scramble_level,
         }
     }
@@ -435,9 +454,15 @@ impl Cube {
                         writeln!(
                             f,
                             "{m},{c},{a},{},{},{},{},{:.4},{:.4},{}",
-                            v.visits, v.threat_visits, v.correct, v.total_decided,
-                            v.threat_ratio(), v.accuracy(),
-                            v.dominant_receptor.map(|r| r.to_string()).unwrap_or_else(|| "-".into()),
+                            v.visits,
+                            v.threat_visits,
+                            v.correct,
+                            v.total_decided,
+                            v.threat_ratio(),
+                            v.accuracy(),
+                            v.dominant_receptor
+                                .map(|r| r.to_string())
+                                .unwrap_or_else(|| "-".into()),
                         )?;
                     }
                 }
@@ -495,7 +520,9 @@ impl std::fmt::Display for SolveResult {
             f,
             "{}@[{},{},{}] conf={:.2} tr={:.2} scr={} {}",
             self.layer,
-            self.coords[0], self.coords[1], self.coords[2],
+            self.coords[0],
+            self.coords[1],
+            self.coords[2],
             self.confidence,
             self.voxel_threat_ratio,
             self.scramble,
@@ -521,9 +548,13 @@ impl std::fmt::Display for CubeSummary {
         write!(
             f,
             "cube: {}/{} voxels occupied (self={} threat={} contested={}) scramble={}/6 acc={:.1}%",
-            self.occupied, self.total_voxels,
-            self.self_voxels, self.threat_voxels, self.contested,
-            self.scramble_level, self.mean_accuracy * 100.0,
+            self.occupied,
+            self.total_voxels,
+            self.self_voxels,
+            self.threat_voxels,
+            self.contested,
+            self.scramble_level,
+            self.mean_accuracy * 100.0,
         )
     }
 }

@@ -769,7 +769,10 @@ fn main() {
             }
 
             // Find which receptor fired with highest confidence (dominant)
-            let dominant = cell.receptors.iter().enumerate()
+            let dominant = cell
+                .receptors
+                .iter()
+                .enumerate()
                 .filter(|(_, r)| r.consecutive >= r.kpr_n)
                 .max_by(|(_, a), (_, b)| a.confidence.partial_cmp(&b.confidence).unwrap())
                 .map(|(i, _)| i);
@@ -831,8 +834,11 @@ fn main() {
                 correct as u8,
                 cell.receptors.len(),
                 cell.memory_count(),
-                raw[0], raw[1], raw[2],
-            ).unwrap();
+                raw[0],
+                raw[1],
+                raw[2],
+            )
+            .unwrap();
         }
 
         // Feedback
