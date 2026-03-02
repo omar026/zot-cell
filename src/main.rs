@@ -15,6 +15,8 @@
 //!   - Independent cascade state
 //!   - Confidence earned through Darwinian selection
 
+mod cube;
+
 use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -678,17 +680,41 @@ impl Cell {
 // --- MAIN ---
 
 fn main() {
+    let use_cube = std::env::args().any(|a| a == "--cube" || a == "--cube-solve");
+    let cube_solve = std::env::args().any(|a| a == "--cube-solve");
+
     eprintln!("ZOT Cell v2.0 — Darwinian KPR Organism");
     eprintln!("  sensors: memory, clock, alloc");
     eprintln!("  receptors: {MAX_RECEPTORS} (from {THYMUS_CANDIDATES} candidates)");
     eprintln!("  cycles: {TOTAL_CYCLES}");
+    if cube_solve {
+        eprintln!("  CUBE: SOLVE MODE (organism function active — cube overrides when confident)");
+    } else if use_cube {
+        eprintln!("  CUBE: OBSERVE MODE (3D substrate state memory, advisory only)");
+    }
     eprintln!();
 
     let mut cell = Cell::calibrate();
 
+    // Build cube from calibration profile if enabled
+    let mut state_cube = if use_cube {
+        let sensor_stats: [(f64, f64); 3] = [
+            (cell.profile.sensors[0].p2, cell.profile.sensors[0].p98),
+            (cell.profile.sensors[1].p2, cell.profile.sensors[1].p98),
+            (cell.profile.sensors[2].p2, cell.profile.sensors[2].p98),
+        ];
+        Some(cube::Cube::from_calibration(&sensor_stats))
+    } else {
+        None
+    };
+
     // CSV output
     let mut out = File::create("results.txt").expect("cannot create results.txt");
-    writeln!(out, "cycle,threat,block,correct,vote_pct,fire_count,n_receptors,memory_cells,raw_mem,raw_clk,raw_alc").unwrap();
+    if use_cube {
+        writeln!(out, "cycle,threat,block,correct,vote_pct,fire_count,n_receptors,memory_cells,raw_mem,raw_clk,raw_alc,cube_block,cube_conf,scramble").unwrap();
+    } else {
+        writeln!(out, "cycle,threat,block,correct,vote_pct,fire_count,n_receptors,memory_cells,raw_mem,raw_clk,raw_alc").unwrap();
+    }
 
     let mut total_correct = 0u32;
     let mut active_threat: Option<(Arc<AtomicBool>, Vec<thread::JoinHandle<()>>)> = None;
@@ -720,14 +746,44 @@ fn main() {
         }
 
         let truth = is_threat_period;
-        let (block, fire_count, vote_pct) = cell.decide();
+        let (mut block, fire_count, vote_pct) = cell.decide();
+        let receptor_block = block; // save original receptor decision
+
+        // Get raw sensor values for CSV (last reading in history)
+        let raw = cell.history.last().copied().unwrap_or([0.0; NUM_SENSORS]);
+
+        // Cube: observe and get advisory vote
+        let (cube_block, cube_conf, scramble) = if let Some(ref mut c) = state_cube {
+            let solve_result = c.solve(&raw);
+
+            // In solve mode: if the cube is authoritative, it overrides the receptor vote.
+            // This IS the organism function: behavior = f(nature, environment)
+            // where nature = the cube's learned shape, environment = the sensor reading.
+            if cube_solve && solve_result.is_authoritative() {
+                block = solve_result.block;
+                eprintln!(
+                    "    ^^ CUBE OVERRIDE: {} (receptor wanted {})",
+                    solve_result,
+                    if receptor_block { "BLOCK" } else { "ALLOW" },
+                );
+            }
+
+            // Find which receptor fired with highest confidence (dominant)
+            let dominant = cell.receptors.iter().enumerate()
+                .filter(|(_, r)| r.consecutive >= r.kpr_n)
+                .max_by(|(_, a), (_, b)| a.confidence.partial_cmp(&b.confidence).unwrap())
+                .map(|(i, _)| i);
+            c.observe(&raw, truth, block, dominant);
+
+            (solve_result.block, solve_result.confidence, c.scramble_level)
+        } else {
+            (false, 0.0, 0)
+        };
+
         let correct = block == truth;
         if correct {
             total_correct += 1;
         }
-
-        // Get raw sensor values for CSV (last reading in history)
-        let raw = cell.history.last().copied().unwrap_or([0.0; NUM_SENSORS]);
 
         let mark = if correct {
             "ok"
@@ -736,26 +792,48 @@ fn main() {
         } else {
             "MISS"
         };
-        eprintln!(
-            "  c{cycle:03} [{}] vote={vote_pct:.3} fire={fire_count} pop={} mem={} {mark}",
-            if truth { "T" } else { "Q" },
-            cell.receptors.len(),
-            cell.memory_count()
-        );
+        if use_cube {
+            eprintln!(
+                "  c{cycle:03} [{}] vote={vote_pct:.3} fire={fire_count} pop={} mem={} cube={}{:.2} scr={scramble} {mark}",
+                if truth { "T" } else { "Q" },
+                cell.receptors.len(),
+                cell.memory_count(),
+                if cube_block { "B" } else { "." },
+                cube_conf,
+            );
+        } else {
+            eprintln!(
+                "  c{cycle:03} [{}] vote={vote_pct:.3} fire={fire_count} pop={} mem={} {mark}",
+                if truth { "T" } else { "Q" },
+                cell.receptors.len(),
+                cell.memory_count()
+            );
+        }
 
-        writeln!(
-            out,
-            "{cycle},{},{},{},{vote_pct:.4},{fire_count},{},{},{:.0},{:.0},{:.0}",
-            truth as u8,
-            block as u8,
-            correct as u8,
-            cell.receptors.len(),
-            cell.memory_count(),
-            raw[0],
-            raw[1],
-            raw[2]
-        )
-        .unwrap();
+        if use_cube {
+            writeln!(
+                out,
+                "{cycle},{},{},{},{vote_pct:.4},{fire_count},{},{},{:.0},{:.0},{:.0},{},{cube_conf:.4},{scramble}",
+                truth as u8,
+                block as u8,
+                correct as u8,
+                cell.receptors.len(),
+                cell.memory_count(),
+                raw[0], raw[1], raw[2],
+                cube_block as u8,
+            ).unwrap();
+        } else {
+            writeln!(
+                out,
+                "{cycle},{},{},{},{vote_pct:.4},{fire_count},{},{},{:.0},{:.0},{:.0}",
+                truth as u8,
+                block as u8,
+                correct as u8,
+                cell.receptors.len(),
+                cell.memory_count(),
+                raw[0], raw[1], raw[2],
+            ).unwrap();
+        }
 
         // Feedback
         cell.learn(truth);
@@ -776,6 +854,16 @@ fn main() {
     let acc = total_correct as f64 / TOTAL_CYCLES as f64;
     eprintln!("\nFINAL: {total_correct}/{TOTAL_CYCLES} correct ({:.1}%)", acc * 100.0);
     eprintln!("  population: {} receptors, {} memory", cell.receptors.len(), cell.memory_count());
+
+    if let Some(ref c) = state_cube {
+        let summary = c.summary();
+        eprintln!("  {summary}");
+        if let Err(e) = c.write_cube_csv("cube.csv") {
+            eprintln!("  warning: could not write cube.csv: {e}");
+        } else {
+            eprintln!("  cube state written to cube.csv");
+        }
+    }
 
     // Summary line in CSV
     writeln!(out, "---,---,---,---,---,---,---,---,---,---,---").unwrap();
